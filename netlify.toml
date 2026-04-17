@@ -3,7 +3,7 @@
   publish = "frontend/dist"
 
 [build.environment]
-  NODE_VERSION = "20"
+  NODE_VERSION = "18"   # Changed from 20 to 18
 
 [[redirects]]
   from = "/*"
