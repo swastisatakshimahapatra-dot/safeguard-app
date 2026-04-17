@@ -14,9 +14,9 @@ export const SocketProvider = ({ children }) => {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const newSocket = io("http://localhost:5000", {
-      transports: ["websocket"],
-    });
+    const newSocket = io(import.meta.env.VITE_SOCKET_URL || "http://localhost:5000", {
+  transports: ["websocket"],
+});
 
     newSocket.on("connect", () => {
       console.log("✅ Socket connected:", newSocket.id);
