@@ -50,21 +50,24 @@ app.use((err, req, res, next) => {
 io.on("connection", (socket) => {
   console.log(`✅ Client connected: ${socket.id}`);
 
-  // ✅ User joins their own room
+  // ✅ Add null check here
   socket.on("join_room", (userId) => {
+    if (!userId) return; // ✅ Guard against null/undefined
     socket.join(userId.toString());
     socket.join(`user_${userId.toString()}`);
     console.log(`📍 User ${userId} joined personal room`);
   });
 
-  // ✅ Family member watches a user
+  // ✅ Add null check here
   socket.on("watch_user", (userId) => {
+    if (!userId) return; // ✅ Guard against null/undefined
     socket.join(`watch_${userId.toString()}`);
     console.log(`👀 Watching user: ${userId}`);
   });
 
-  // ✅ Stop watching
+  // ✅ Add null check here
   socket.on("unwatch_user", (userId) => {
+    if (!userId) return; // ✅ Guard against null/undefined
     socket.leave(`watch_${userId.toString()}`);
     console.log(`👁️ Stopped watching: ${userId}`);
   });

@@ -14,6 +14,9 @@ import {
   getPendingRequests,
   respondToLinkRequest,
   getSentRequests,
+  verifyEmail,
+  sendVerificationEmailHandler,
+  checkEmailRoute,
 } from "../controllers/authController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
@@ -37,5 +40,8 @@ router.post("/link-request/send", protect, sendLinkRequest);
 router.get("/link-request/pending", protect, getPendingRequests);
 router.get("/link-request/sent", protect, getSentRequests);
 router.post("/link-request/respond", protect, respondToLinkRequest);
+router.get("/verify-email/:token", verifyEmail);
+router.post("/send-verification", sendVerificationEmailHandler);
+router.post("/check-email", checkEmailRoute);
 
 export default router;

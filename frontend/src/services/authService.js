@@ -75,3 +75,14 @@ export const respondToLinkRequest = async (data) => {
   const response = await api.post("/auth/link-request/respond", data);
   return response.data;
 };
+
+export const sendVerificationEmail = async (data) => {
+  const response = await api.post("/auth/send-verification", data);
+  return response.data;
+};
+
+// ✅ ADD THIS - was missing
+export const checkEmailExists = async (email) => {
+  const response = await api.post("/auth/check-email", { email });
+  return response.data;
+};

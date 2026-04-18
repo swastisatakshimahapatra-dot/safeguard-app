@@ -4,7 +4,7 @@ import { FiShield, FiMail, FiLock, FiEye, FiEyeOff } from "react-icons/fi";
 import { FcGoogle } from "react-icons/fc";
 import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
-import { loginUser } from '../services/authService'
+import { loginUser } from "../services/authService";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -53,15 +53,80 @@ const Login = () => {
       login(response.user, response.token);
       toast.success(`Welcome back, ${response.user.fullName}! 💪`);
 
-      // Route based on role
       if (response.user.role === "family") {
         navigate("/family/dashboard");
       } else {
         navigate("/dashboard");
       }
     } catch (error) {
-      const message = error.response?.data?.message || "Login failed";
-      toast.error(message);
+      // ✅ Full error logging to debug
+      console.error("Login error full:", error);
+      console.error("Login error response:", error.response);
+      console.error("Login error message:", error.message);
+
+      const message = error.response?.data?.message;
+      const status = error.response?.status;
+      const requiresVerification = error.response?.data?.requiresVerification;
+
+      if (!error.response) {
+        // ✅ Network error - no response from server
+        toast.error("❌ Cannot connect to server. Check your internet.", {
+          duration: 5000,
+        });
+        return;
+      }
+
+      if (requiresVerification) {
+        toast.error("Please verify your email first. Check your inbox! 📧", {
+          duration: 6000,
+        });
+      } else if (
+        status === 401 &&
+        message === "No account found with this email address"
+      ) {
+        // ✅ No account - show register toast
+        toast(
+          (t) => (
+            <div className="flex flex-col gap-2">
+              <p className="font-semibold text-sm">No account found! 📝</p>
+              <p className="text-xs text-gray-600">
+                This email is not registered. Please create an account first.
+              </p>
+              <button
+                onClick={() => {
+                  toast.dismiss(t.id);
+                  navigate("/register");
+                }}
+                className="px-4 py-2 bg-[#E91E8C] text-white text-xs
+              font-bold rounded-lg hover:bg-pink-600 transition-colors"
+              >
+                Register Now →
+              </button>
+            </div>
+          ),
+          {
+            duration: 8000,
+            icon: "📝",
+            style: {
+              background: "white",
+              color: "#1A1A2E",
+              border: "2px solid #E91E8C",
+            },
+          },
+        );
+      } else if (
+        status === 401 &&
+        message === "Incorrect password. Please try again."
+      ) {
+        toast.error("❌ Wrong password. Please try again.", {
+          duration: 4000,
+        });
+      } else {
+        // ✅ Fallback - show whatever message comes from server
+        toast.error(message || "Login failed. Please try again.", {
+          duration: 4000,
+        });
+      }
     } finally {
       setLoading(false);
     }

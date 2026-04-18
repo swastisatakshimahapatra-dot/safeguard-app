@@ -24,6 +24,8 @@ import { useTracking } from "../../context/TrackingContext";
 import { triggerEmergencyAlert } from "../../services/alertService";
 import { fetchAlertHistory } from "../../services/alertService";
 import { fetchContacts } from "../../services/contactService";
+import { useVolumeButtonSOS } from "../../hooks/useVolumeButtonSOS";
+import PWAInstallPrompt from "../../components/PWAInstallPrompt";
 import {
   getPendingRequests,
   respondToLinkRequest,
@@ -66,6 +68,8 @@ const Dashboard = () => {
   const { socket } = useSocket();
   const { tracking, position } = useTracking();
   const navigate = useNavigate();
+
+  useVolumeButtonSOS();
 
   // ✅ SOS States
   const [sosState, setSosState] = useState("idle");
@@ -349,6 +353,7 @@ const Dashboard = () => {
 
   return (
     <DashboardLayout>
+      <PWAInstallPrompt />
       <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto">
         {/* Welcome Banner */}
         <div className="bg-gradient-to-r from-[#1A1A2E] to-[#0F3460] rounded-2xl p-4 sm:p-6 lg:p-8 relative overflow-hidden">

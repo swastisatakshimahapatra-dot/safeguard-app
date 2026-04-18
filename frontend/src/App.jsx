@@ -18,6 +18,9 @@ import Settings from "./pages/user/Settings";
 
 // Family Pages
 import FamilyDashboard from "./pages/family/FamilyDashboard";
+import VerifyEmail from "./pages/VerifyEmail";
+
+import ScrollManager from "./utils/ScrollManager";
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { isAuthenticated, user, loading } = useAuth();
@@ -63,99 +66,103 @@ const PublicRoute = ({ children }) => {
 
 function AppRoutes() {
   return (
-    <Routes>
-      {/* Public */}
-      <Route path="/" element={<Landing />} />
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <Login />
-          </PublicRoute>
-        }
-      />
-      <Route
-        path="/register"
-        element={
-          <PublicRoute>
-            <Register />
-          </PublicRoute>
-        }
-      />
+    <>
+      {/* ✅ Add this — works globally for all pages */}
+      <ScrollManager />
 
-      {/* User only */}
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute allowedRoles={["user", "admin"]}>
-            <Dashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/contacts"
-        element={
-          <ProtectedRoute allowedRoles={["user", "admin"]}>
-            <Contacts />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/alerts"
-        element={
-          <ProtectedRoute allowedRoles={["user", "admin"]}>
-            <AlertHistory />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/location"
-        element={
-          <ProtectedRoute allowedRoles={["user", "admin"]}>
-            <LiveLocation />
-          </ProtectedRoute>
-        }
-      />
+      <Routes>
+        {/* Public */}
+        <Route path="/" element={<Landing />} />
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <PublicRoute>
+              <Register />
+            </PublicRoute>
+          }
+        />
+        <Route path="/verify-email/:token" element={<VerifyEmail />} />
 
-      {/* ✅ Settings accessible by ALL roles */}
-      <Route
-        path="/settings"
-        element={
-          <ProtectedRoute allowedRoles={["user", "admin", "family"]}>
-            <Settings />
-          </ProtectedRoute>
-        }
-      />
+        {/* User only */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={["user", "admin"]}>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/contacts"
+          element={
+            <ProtectedRoute allowedRoles={["user", "admin"]}>
+              <Contacts />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/alerts"
+          element={
+            <ProtectedRoute allowedRoles={["user", "admin"]}>
+              <AlertHistory />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/location"
+          element={
+            <ProtectedRoute allowedRoles={["user", "admin"]}>
+              <LiveLocation />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute allowedRoles={["user", "admin", "family"]}>
+              <Settings />
+            </ProtectedRoute>
+          }
+        />
 
-      {/* Family only */}
-      <Route
-        path="/family/dashboard"
-        element={
-          <ProtectedRoute allowedRoles={["family"]}>
-            <FamilyDashboard />
-          </ProtectedRoute>
-        }
-      />
+        {/* Family only */}
+        <Route
+          path="/family/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={["family"]}>
+              <FamilyDashboard />
+            </ProtectedRoute>
+          }
+        />
 
-      {/* 404 */}
-      <Route
-        path="*"
-        element={
-          <div className="min-h-screen flex items-center justify-center">
-            <div className="text-center">
-              <h1 className="text-6xl font-bold text-[#E91E8C]">404</h1>
-              <p className="text-gray-500 mt-2">Page not found</p>
-              <a
-                href="/"
-                className="mt-4 inline-block text-[#E91E8C] underline"
-              >
-                Go Home
-              </a>
+        {/* 404 */}
+        <Route
+          path="*"
+          element={
+            <div className="min-h-screen flex items-center justify-center">
+              <div className="text-center">
+                <h1 className="text-6xl font-bold text-[#E91E8C]">404</h1>
+                <p className="text-gray-500 mt-2">Page not found</p>
+                <a
+                  href="/"
+                  className="mt-4 inline-block text-[#E91E8C] underline"
+                >
+                  Go Home
+                </a>
+              </div>
             </div>
-          </div>
-        }
-      />
-    </Routes>
+          }
+        />
+      </Routes>
+    </>
   );
 }
 

@@ -14,20 +14,31 @@ export const SocketProvider = ({ children }) => {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const newSocket = io(import.meta.env.VITE_SOCKET_URL || "http://localhost:5000", {
-  transports: ["websocket"],
-});
+    const newSocket = io(
+      import.meta.env.VITE_SOCKET_URL || "http://localhost:5000",
+      {
+        transports: ["websocket"],
+      },
+    );
 
     newSocket.on("connect", () => {
       console.log("✅ Socket connected:", newSocket.id);
       setConnected(true);
 
-      // ✅ Join user room for receiving link requests
       const storedUser = localStorage.getItem("safeguard_user");
       if (storedUser) {
-        const user = JSON.parse(storedUser);
-        newSocket.emit("join_room", user.id || user._id);
-        console.log("🏠 Joined user room:", user.id || user._id);
+        try {
+          const user = JSON.parse(storedUser);
+          const userId = user.id || user._id;
+
+          // ✅ Only emit if userId exists
+          if (userId) {
+            newSocket.emit("join_room", userId);
+            console.log("🏠 Joined user room:", userId);
+          }
+        } catch (err) {
+          console.log("Failed to parse user from storage");
+        }
       }
     });
 

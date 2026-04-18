@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   FiShield,
@@ -16,6 +16,8 @@ import { MdSecurity, MdFamilyRestroom } from "react-icons/md";
 import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
 import { registerUser } from "../services/authService";
+import { checkEmailExists } from "../services/authService";
+import api from "../services/api";
 
 // ✅ MOVED OUTSIDE - This is the fix
 const InputField = ({
@@ -59,49 +61,6 @@ const InputField = ({
   </div>
 );
 
-// ✅ MOVED OUTSIDE
-const PasswordField = ({
-  label,
-  name,
-  placeholder,
-  value,
-  onChange,
-  error,
-  show,
-  onToggle,
-}) => (
-  <div>
-    <label className="block text-sm font-semibold text-[#1A1A2E] mb-2">
-      {label}
-    </label>
-    <div className="relative">
-      <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-      <input
-        type={show ? "text" : "password"}
-        name={name}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        autoComplete="off"
-        className={`w-full pl-11 pr-12 py-3.5 border-2 rounded-xl 
-          text-[#1A1A2E] placeholder-gray-400 
-          focus:outline-none focus:border-[#E91E8C] 
-          transition-colors ${
-            error ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50"
-          }`}
-      />
-      <button
-        type="button"
-        onClick={onToggle}
-        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#E91E8C]"
-      >
-        {show ? <FiEyeOff /> : <FiEye />}
-      </button>
-    </div>
-    {error && <p className="text-red-500 text-xs mt-1.5">⚠ {error}</p>}
-  </div>
-);
-
 // ============================================
 // ✅ MAIN REGISTER COMPONENT
 // ============================================
@@ -114,7 +73,10 @@ const Register = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [passwordError, setPasswordError] = useState("");
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
+  // ✅ Move formData UP - before all useEffects
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -130,6 +92,181 @@ const Register = () => {
     ],
     terms: false,
   });
+
+  const [verificationSent, setVerificationSent] = useState(() => {
+    return localStorage.getItem("safeguard_verify_sent") === "true";
+  });
+  const [verificationEmail, setVerificationEmail] = useState(() => {
+    return localStorage.getItem("safeguard_verify_email") || "";
+  });
+
+  const PASSWORD_REGEX =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/;
+
+  // ✅ FIRST useEffect - check on mount
+  useEffect(() => {
+    const checkOnMount = async () => {
+      const token = localStorage.getItem("safeguard_token");
+      const user = localStorage.getItem("safeguard_user");
+      const wasSent = localStorage.getItem("safeguard_verify_sent") === "true";
+      const email = localStorage.getItem("safeguard_verify_email");
+
+      if (token && user) {
+        localStorage.removeItem("safeguard_verify_sent");
+        localStorage.removeItem("safeguard_verify_email");
+        try {
+          const parsedUser = JSON.parse(user);
+          navigate(
+            parsedUser.role === "family" ? "/family/dashboard" : "/dashboard",
+            { replace: true },
+          );
+        } catch {
+          navigate("/dashboard", { replace: true });
+        }
+        return;
+      }
+
+      if (wasSent && email) {
+        try {
+          const response = await api.post("/auth/check-email", { email });
+          if (response.data.verified === true) {
+            localStorage.removeItem("safeguard_verify_sent");
+            localStorage.removeItem("safeguard_verify_email");
+            toast.success("Email verified! Please login to continue.", {
+              duration: 4000,
+            });
+            navigate("/login", { replace: true });
+          }
+        } catch {
+          // API failed - show verification page normally
+        }
+      }
+    };
+
+    checkOnMount();
+  }, []);
+
+  // ✅ SECOND useEffect - polling with backend check
+  useEffect(() => {
+    if (!verificationSent || isRedirecting) return;
+
+    let mounted = true;
+
+    const checkVerificationStatus = async () => {
+      if (!mounted || isRedirecting) return;
+
+      try {
+        const email = localStorage.getItem("safeguard_verify_email");
+        if (!email) return;
+
+        const response = await api.post("/auth/check-email", { email });
+
+        if (response.data.verified === true) {
+          if (!mounted) return;
+
+          const existingToken = localStorage.getItem("safeguard_token");
+          const existingUser = localStorage.getItem("safeguard_user");
+
+          if (existingToken && existingUser) {
+            setIsRedirecting(true);
+            clearInterval(pollInterval);
+
+            localStorage.removeItem("safeguard_verify_sent");
+            localStorage.removeItem("safeguard_verify_email");
+
+            try {
+              const parsedUser = JSON.parse(existingUser);
+              toast.success("Email verified! Redirecting...", {
+                duration: 2000,
+              });
+              setTimeout(() => {
+                if (!mounted) return;
+                navigate(
+                  parsedUser.role === "family"
+                    ? "/family/dashboard"
+                    : "/dashboard",
+                  { replace: true },
+                );
+              }, 500);
+            } catch {
+              navigate("/dashboard", { replace: true });
+            }
+          } else {
+            // ✅ Auto login using form password
+            setIsRedirecting(true);
+            clearInterval(pollInterval);
+
+            try {
+              const loginResponse = await api.post("/auth/login", {
+                email: email,
+                password: formData.password,
+              });
+
+              if (loginResponse.data.success) {
+                login(loginResponse.data.user, loginResponse.data.token);
+
+                localStorage.removeItem("safeguard_verify_sent");
+                localStorage.removeItem("safeguard_verify_email");
+
+                toast.success("Email verified! Welcome to SafeGuard 🎉", {
+                  duration: 3000,
+                });
+
+                setTimeout(() => {
+                  if (!mounted) return;
+                  navigate(
+                    loginResponse.data.user.role === "family"
+                      ? "/family/dashboard"
+                      : "/dashboard",
+                    { replace: true },
+                  );
+                }, 500);
+              }
+            } catch (loginError) {
+              console.log("Auto-login failed:", loginError);
+              setIsRedirecting(false);
+              localStorage.removeItem("safeguard_verify_sent");
+              localStorage.removeItem("safeguard_verify_email");
+              toast.success("Email verified! Please login to continue.", {
+                duration: 4000,
+              });
+              setTimeout(() => {
+                navigate("/login", { replace: true });
+              }, 1000);
+            }
+          }
+        }
+      } catch (error) {
+        console.log("Check failed, retrying...");
+      }
+    };
+
+    // ✅ Check immediately
+    checkVerificationStatus();
+
+    // ✅ Poll every 3 seconds
+    const pollInterval = setInterval(checkVerificationStatus, 3000);
+
+    const handleFocus = () => {
+      if (!isRedirecting) checkVerificationStatus();
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && !isRedirecting) {
+        checkVerificationStatus();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      mounted = false;
+      clearInterval(pollInterval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [verificationSent, isRedirecting, navigate, login, formData.password]);
 
   const totalSteps = 4;
 
@@ -167,20 +304,28 @@ const Register = () => {
     if (!formData.phone) newErrors.phone = "Phone number is required";
     else if (formData.phone.length < 10)
       newErrors.phone = "Enter valid 10-digit number";
-    if (!formData.password) newErrors.password = "Password is required";
-    else if (formData.password.length < 6)
-      newErrors.password = "Minimum 6 characters";
-    if (!formData.confirmPassword)
+
+    // ✅ Use regex for password validation
+    if (!formData.password) {
+      newErrors.password = "Password is required";
+    } else if (!PASSWORD_REGEX.test(formData.password)) {
+      setPasswordError(
+        "Min 6 chars with uppercase, lowercase, number & special character (@$!%*?&)",
+      );
+      newErrors.password = " "; // ✅ Trigger red border without duplicate message
+    }
+
+    if (!formData.confirmPassword) {
       newErrors.confirmPassword = "Please confirm password";
-    else if (formData.password !== formData.confirmPassword)
+    } else if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = "Passwords do not match";
+    }
     if (!formData.gender) newErrors.gender = "Please select gender";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const validateStep2 = () => {
-    // At least first contact must be fully filled
     const firstContact = formData.contacts[0];
 
     if (!firstContact.name.trim()) {
@@ -195,15 +340,24 @@ const Register = () => {
       toast.error("Contact 1 phone must be 10 digits");
       return false;
     }
+    // ✅ Email mandatory for contact 1
+    if (!firstContact.email.trim()) {
+      toast.error("Please enter email for Contact 1");
+      return false;
+    }
+    if (!/\S+@\S+\.\S+/.test(firstContact.email)) {
+      toast.error("Please enter valid email for Contact 1");
+      return false;
+    }
     if (!firstContact.relation) {
       toast.error("Please select relation for Contact 1");
       return false;
     }
 
-    // Check other contacts - if name filled then phone and relation also required
+    // Check other contacts
     for (let i = 1; i < formData.contacts.length; i++) {
       const contact = formData.contacts[i];
-      if (contact.name.trim() || contact.phone.trim()) {
+      if (contact.name.trim() || contact.phone.trim() || contact.email.trim()) {
         if (!contact.name.trim()) {
           toast.error(`Please enter name for Contact ${i + 1}`);
           return false;
@@ -214,6 +368,15 @@ const Register = () => {
         }
         if (contact.phone.trim().length < 10) {
           toast.error(`Contact ${i + 1} phone must be 10 digits`);
+          return false;
+        }
+        // ✅ Email mandatory for other contacts if partially filled
+        if (!contact.email.trim()) {
+          toast.error(`Please enter email for Contact ${i + 1}`);
+          return false;
+        }
+        if (!/\S+@\S+\.\S+/.test(contact.email)) {
+          toast.error(`Please enter valid email for Contact ${i + 1}`);
           return false;
         }
         if (!contact.relation) {
@@ -235,17 +398,81 @@ const Register = () => {
     return true;
   };
 
-  const handleNext = () => {
-    if (step === 1 && !validateStep1()) return;
+  const handleNext = async () => {
+    if (step === 1) {
+      if (!validateStep1()) return;
+
+      setLoading(true);
+      try {
+        const result = await checkEmailExists(formData.email);
+
+        if (result.exists && result.verified) {
+          toast(
+            (t) => (
+              <div className="flex flex-col gap-2">
+                <p className="font-semibold text-sm">Already Registered!</p>
+                <p className="text-xs text-gray-600">
+                  This email is already registered. Please login instead.
+                </p>
+                <button
+                  onClick={() => {
+                    toast.dismiss(t.id);
+                    navigate("/login");
+                  }}
+                  className="px-4 py-2 bg-[#E91E8C] text-white text-xs 
+                font-bold rounded-lg hover:bg-pink-600"
+                >
+                  Go to Login →
+                </button>
+              </div>
+            ),
+            {
+              duration: 8000,
+              icon: "⚠️",
+              style: {
+                background: "white",
+                color: "#1A1A2E",
+                border: "2px solid #E91E8C",
+              },
+            },
+          );
+          setLoading(false);
+          return;
+        }
+
+        if (result.exists && !result.verified) {
+          toast.error(
+            "Email registered but not verified. Check your inbox! 📧",
+            { duration: 6000 },
+          );
+          setLoading(false);
+          return;
+        }
+
+        setStep((prev) => prev + 1);
+        setErrors({});
+        window.scrollTo({ top: 0, behavior: "instant" }); // ✅ Scroll top on next
+      } catch (error) {
+        setStep((prev) => prev + 1);
+        setErrors({});
+        window.scrollTo({ top: 0, behavior: "instant" }); // ✅ Scroll top on next
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (step === 2 && !validateStep2()) return;
     if (step === 3 && !validateStep3()) return;
     setStep((prev) => prev + 1);
     setErrors({});
+    window.scrollTo({ top: 0, behavior: "instant" }); // ✅ Scroll top on next
   };
 
   const handleBack = () => {
     setStep((prev) => prev - 1);
     setErrors({});
+    window.scrollTo({ top: 0, behavior: "instant" }); // ✅ Scroll top on back
   };
 
   // ✅ Submit
@@ -265,12 +492,16 @@ const Register = () => {
         role: formData.role,
         contacts: formData.contacts,
       });
-      login(response.user, response.token);
-      toast.success("Account created! Welcome to SafeGuard 🎉");
-      if (response.user.role === "family") {
-        navigate("/family/dashboard");
-      } else {
-        navigate("/dashboard");
+
+      if (response.requiresVerification) {
+        // ✅ Save to localStorage so refresh doesn't lose state
+        localStorage.setItem("safeguard_verify_sent", "true");
+        localStorage.setItem("safeguard_verify_email", formData.email);
+
+        setVerificationEmail(formData.email);
+        setVerificationSent(true);
+        window.scrollTo({ top: 0, behavior: "instant" });
+        return;
       }
     } catch (error) {
       const message = error.response?.data?.message || "Registration failed";
@@ -279,6 +510,155 @@ const Register = () => {
       setLoading(false);
     }
   };
+
+  if (verificationSent) {
+    // ✅ Show redirecting loader
+    if (isRedirecting) {
+      return (
+        <div
+          className="min-h-screen bg-gradient-to-br from-[#F8F9FA] 
+      to-pink-50 flex items-center justify-center py-6 px-3"
+        >
+          <div className="w-full max-w-md">
+            <div className="flex items-center justify-center gap-2 mb-8">
+              <div
+                className="w-12 h-12 bg-gradient-to-br from-pink-500 
+            to-pink-700 rounded-2xl flex items-center justify-center shadow-lg"
+              >
+                <FiShield className="text-white text-2xl" />
+              </div>
+              <div>
+                <span className="text-2xl font-bold text-[#1A1A2E]">Safe</span>
+                <span className="text-2xl font-bold text-[#E91E8C]">Guard</span>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl shadow-xl p-10 text-center">
+              <div
+                className="w-20 h-20 border-4 border-green-500 
+            border-t-transparent rounded-full animate-spin mx-auto mb-6"
+              ></div>
+              <h2 className="text-2xl font-bold text-[#1A1A2E] mb-2">
+                Email Verified! ✅
+              </h2>
+              <p className="text-gray-500 text-sm">
+                Redirecting to your dashboard...
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ✅ Show "Check Your Email" screen if not redirecting
+    return (
+      <div
+        className="min-h-screen bg-gradient-to-br from-[#F8F9FA] 
+    to-pink-50 flex items-center justify-center py-6 px-3"
+      >
+        <div className="w-full max-w-md">
+          {/* Logo */}
+          <div className="flex items-center justify-center gap-2 mb-8">
+            <div
+              className="w-12 h-12 bg-gradient-to-br from-pink-500 
+          to-pink-700 rounded-2xl flex items-center justify-center shadow-lg"
+            >
+              <FiShield className="text-white text-2xl" />
+            </div>
+            <div>
+              <span className="text-2xl font-bold text-[#1A1A2E]">Safe</span>
+              <span className="text-2xl font-bold text-[#E91E8C]">Guard</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl shadow-xl p-8 text-center">
+            {/* Email icon */}
+            <div
+              className="w-24 h-24 bg-pink-50 rounded-3xl flex 
+          items-center justify-center mx-auto mb-6"
+            >
+              <span className="text-5xl">📧</span>
+            </div>
+
+            <h2 className="text-2xl font-bold text-[#1A1A2E] mb-3">
+              Check Your Email!
+            </h2>
+
+            <p className="text-gray-500 text-sm leading-relaxed mb-2">
+              We sent a verification link to:
+            </p>
+            <p className="text-[#E91E8C] font-bold text-base mb-6">
+              {verificationEmail}
+            </p>
+
+            <div
+              className="bg-blue-50 border border-blue-100 rounded-2xl 
+          p-4 mb-6 text-left"
+            >
+              <p className="text-blue-700 text-sm font-semibold mb-2">
+                📋 Next Steps:
+              </p>
+              <ol
+                className="text-blue-600 text-xs space-y-1.5 list-decimal 
+            list-inside"
+              >
+                <li>Open your email inbox</li>
+                <li>
+                  Click the <strong>"Verify My Email"</strong> button
+                </li>
+                <li>You'll be automatically redirected to your dashboard</li>
+              </ol>
+            </div>
+
+            <p className="text-gray-400 text-xs mb-6">
+              Link expires in 24 hours. Check spam folder if not received.
+            </p>
+
+            {/* Resend button */}
+            <button
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  await sendVerificationEmail({
+                    fullName: formData.fullName,
+                    email: formData.email,
+                    phone: formData.phone,
+                    password: formData.password,
+                    gender: formData.gender,
+                  });
+                  toast.success("Verification email resent! ✅");
+                } catch {
+                  toast.error("Failed to resend");
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+              className="w-full py-3 border-2 border-[#E91E8C] text-[#E91E8C] 
+            font-semibold rounded-xl hover:bg-pink-50 transition-all mb-3 
+            disabled:opacity-60"
+            >
+              {loading ? "Sending..." : "📨 Resend Verification Email"}
+            </button>
+
+            <button
+              onClick={() => {
+                localStorage.removeItem("safeguard_verify_sent");
+                localStorage.removeItem("safeguard_verify_email");
+                setVerificationSent(false);
+                setIsRedirecting(false); // ✅ Reset redirect state
+                setStep(1);
+                window.scrollTo({ top: 0, behavior: "instant" });
+              }}
+              className="text-gray-400 text-sm hover:text-gray-600"
+            >
+              ← Change email address
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F8F9FA] to-pink-50 flex items-center justify-center py-6 px-3 sm:py-12 sm:px-4">
@@ -404,27 +784,128 @@ const Register = () => {
                 )}
               </div>
 
-              <PasswordField
-                label="Password"
-                name="password"
-                placeholder="Minimum 6 characters"
-                value={formData.password}
-                onChange={handleChange}
-                error={errors.password}
-                show={showPassword}
-                onToggle={() => setShowPassword(!showPassword)}
-              />
+              {/* Password */}
+              <div>
+                <label className="block text-sm font-semibold text-[#1A1A2E] mb-2">
+                  Password
+                </label>
+                <div className="relative">
+                  <FiLock
+                    className="absolute left-4 top-1/2 -translate-y-1/2 
+    text-gray-400 pointer-events-none"
+                  />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    value={formData.password}
+                    onChange={(e) => {
+                      handleChange(e);
+                      // ✅ Clear error while typing
+                      if (passwordError) setPasswordError("");
+                    }}
+                    onBlur={() => {
+                      // ✅ Validate on blur (when user leaves field)
+                      if (
+                        formData.password &&
+                        !PASSWORD_REGEX.test(formData.password)
+                      ) {
+                        setPasswordError(
+                          "Min 6 chars with uppercase, lowercase, number & special character (@$!%*?&)",
+                        );
+                      } else {
+                        setPasswordError("");
+                      }
+                    }}
+                    placeholder="Minimum 6 characters"
+                    autoComplete="off"
+                    className={`w-full pl-11 pr-12 py-3.5 border-2 rounded-xl
+        text-[#1A1A2E] placeholder-gray-400
+        focus:outline-none focus:border-[#E91E8C]
+        transition-colors ${
+          errors.password || passwordError
+            ? "border-red-400 bg-red-50"
+            : formData.password && PASSWORD_REGEX.test(formData.password)
+              ? "border-green-400 bg-green-50"
+              : "border-gray-200 bg-gray-50"
+        }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 
+      text-gray-400 hover:text-[#E91E8C]"
+                  >
+                    {showPassword ? <FiEyeOff /> : <FiEye />}
+                  </button>
+                  {/* ✅ Green check when valid */}
+                  {formData.password &&
+                    PASSWORD_REGEX.test(formData.password) && (
+                      <FiCheck
+                        className="absolute right-10 top-1/2 -translate-y-1/2 
+      text-green-500"
+                      />
+                    )}
+                </div>
+                {/* ✅ Show error below - no rules list */}
+                {(errors.password || passwordError) && (
+                  <p className="text-red-500 text-xs mt-1.5">
+                    ⚠ {errors.password || passwordError}
+                  </p>
+                )}
+              </div>
 
-              <PasswordField
-                label="Confirm Password"
-                name="confirmPassword"
-                placeholder="Re-enter your password"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                error={errors.confirmPassword}
-                show={showConfirm}
-                onToggle={() => setShowConfirm(!showConfirm)}
-              />
+              {/* Confirm Password */}
+              <div>
+                <label className="block text-sm font-semibold text-[#1A1A2E] mb-2">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <FiLock
+                    className="absolute left-4 top-1/2 -translate-y-1/2 
+    text-gray-400 pointer-events-none"
+                  />
+                  <input
+                    type={showConfirm ? "text" : "password"}
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    placeholder="Re-enter your password"
+                    autoComplete="off"
+                    className={`w-full pl-11 pr-12 py-3.5 border-2 rounded-xl
+        text-[#1A1A2E] placeholder-gray-400
+        focus:outline-none focus:border-[#E91E8C]
+        transition-colors ${
+          errors.confirmPassword
+            ? "border-red-400 bg-red-50"
+            : formData.confirmPassword &&
+                formData.password === formData.confirmPassword
+              ? "border-green-400 bg-green-50"
+              : "border-gray-200 bg-gray-50"
+        }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm(!showConfirm)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 
+      text-gray-400 hover:text-[#E91E8C]"
+                  >
+                    {showConfirm ? <FiEyeOff /> : <FiEye />}
+                  </button>
+                  {/* ✅ Green check when passwords match */}
+                  {formData.confirmPassword &&
+                    formData.password === formData.confirmPassword && (
+                      <FiCheck
+                        className="absolute right-10 top-1/2 -translate-y-1/2 
+        text-green-500"
+                      />
+                    )}
+                </div>
+                {errors.confirmPassword && (
+                  <p className="text-red-500 text-xs mt-1.5">
+                    ⚠ {errors.confirmPassword}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -519,14 +1000,31 @@ const Register = () => {
                     </div>
 
                     <div>
+                      <label className="text-xs font-semibold text-gray-500 mb-1 block">
+                        Email Address{" "}
+                        {index === 0 && <span className="text-red-400">*</span>}
+                        {index > 0 && (
+                          <span className="text-gray-400 font-normal">
+                            (required if contact added)
+                          </span>
+                        )}
+                      </label>
                       <input
                         type="email"
-                        placeholder="Email address (for email alerts)"
+                        placeholder={
+                          index === 0
+                            ? "Required - Email for emergency alerts"
+                            : "Email address (required if adding contact)"
+                        }
                         value={contact.email}
                         onChange={(e) =>
                           handleContactChange(index, "email", e.target.value)
                         }
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white focus:outline-none focus:border-[#E91E8C] text-[#1A1A2E] placeholder-gray-400 transition-colors"
+                        className={`w-full px-4 py-3 border-2 rounded-xl bg-white 
+    focus:outline-none focus:border-[#E91E8C] text-[#1A1A2E] 
+    placeholder-gray-400 transition-colors ${
+      index === 0 && !contact.email ? "border-pink-200" : "border-gray-200"
+    }`}
                       />
                     </div>
 

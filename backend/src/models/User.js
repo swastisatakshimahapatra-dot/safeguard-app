@@ -47,7 +47,21 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-    // ✅ Family members can watch these users
+
+    // ✅ Email verification fields
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    emailVerifyToken: {
+      type: String,
+      default: null,
+    },
+    emailVerifyExpires: {
+      type: Date,
+      default: null,
+    },
+
     linkedUsers: [
       {
         userId: {
@@ -57,7 +71,6 @@ const userSchema = new mongoose.Schema(
         relation: String,
       },
     ],
-    // ✅ Settings stored in DB
     settings: {
       notifications: {
         emailAlerts: { type: Boolean, default: true },

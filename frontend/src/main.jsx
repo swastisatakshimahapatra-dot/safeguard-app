@@ -4,6 +4,9 @@ import './index.css'
 import App from './App.jsx'
 import 'leaflet/dist/leaflet.css'
 import './utils/fixLeafletIcon'
+import { registerServiceWorker } from './utils/registerSW'
+
+registerServiceWorker()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
