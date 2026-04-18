@@ -24,7 +24,6 @@ import { useTracking } from "../../context/TrackingContext";
 import { triggerEmergencyAlert } from "../../services/alertService";
 import { fetchAlertHistory } from "../../services/alertService";
 import { fetchContacts } from "../../services/contactService";
-import { useVolumeButtonSOS } from "../../hooks/useVolumeButtonSOS";
 import PWAInstallPrompt from "../../components/PWAInstallPrompt";
 import {
   getPendingRequests,
@@ -69,8 +68,6 @@ const Dashboard = () => {
   const { tracking, position } = useTracking();
   const navigate = useNavigate();
 
-  useVolumeButtonSOS();
-
   // ✅ SOS States
   const [sosState, setSosState] = useState("idle");
   const [countdown, setCountdown] = useState(5);
@@ -86,6 +83,7 @@ const Dashboard = () => {
   // ✅ Link requests
   const [pendingRequests, setPendingRequests] = useState([]);
   const [respondingId, setRespondingId] = useState(null);
+  const [autoTrigger, setAutoTrigger] = useState(false);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -114,6 +112,31 @@ const Dashboard = () => {
     };
     loadStats();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get("sos") === "true") {
+      window.history.replaceState({}, "", "/dashboard");
+
+      toast("🆘 Emergency SOS activated via shortcut", {
+        icon: "🚨",
+        duration: 3000,
+      });
+
+      setTimeout(() => {
+        setAutoTrigger(true);
+      }, 1500);
+    }
+  }, []);
+
+  // ✅ ADD this new useEffect
+  useEffect(() => {
+    if (autoTrigger && sosState === "idle") {
+      handleSOSPress();
+      setAutoTrigger(false);
+    }
+  }, [autoTrigger, sosState]);
 
   // ✅ Load pending link requests
   useEffect(() => {
@@ -269,10 +292,17 @@ const Dashboard = () => {
   };
 
   const handleCancel = () => {
-    if (countdownRef.current) clearInterval(countdownRef.current);
+    // ✅ Clear the countdown interval
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null; // ✅ Set to null after clearing
+    }
+
+    // ✅ Reset all states
     setSosState("idle");
     setCountdown(5);
     locationRef.current = null;
+
     toast("Emergency alert cancelled", { icon: "❌" });
   };
 

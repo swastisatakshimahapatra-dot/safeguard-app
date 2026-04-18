@@ -179,10 +179,6 @@ const PWAInstallPrompt = () => {
             Later
           </button>
         </div>
-
-        <p className="text-gray-400 text-xs mt-3 text-center">
-          🔊 Press Volume Button 5x for emergency SOS
-        </p>
       </div>
     </div>
   );
