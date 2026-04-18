@@ -38,14 +38,32 @@ self.addEventListener("activate", (event) => {
 
 // ✅ Fetch - Network first, fallback to cache
 self.addEventListener("fetch", (event) => {
+  // ✅ Skip non-GET requests (POST, PUT, DELETE)
+  if (event.request.method !== "GET") {
+    return;
+  }
+
+  // ✅ Skip external APIs - don't cache them
+  const url = new URL(event.request.url);
+  if (
+    url.hostname.includes("overpass-api.de") ||
+    url.hostname.includes("api.data.gov.in") ||
+    url.hostname.includes("nominatim.openstreetmap.org") ||
+    url.hostname.includes("socket.io")
+  ) {
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Clone response
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
+        // Only cache successful GET requests
+        if (response.ok && event.request.method === "GET") {
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
         return response;
       })
       .catch(() => {

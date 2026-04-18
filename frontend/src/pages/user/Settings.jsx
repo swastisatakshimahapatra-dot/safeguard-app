@@ -16,7 +16,6 @@ import {
   FiAlertCircle,
   FiLogOut,
 } from "react-icons/fi";
-import { MdLocationOn, MdNotifications } from "react-icons/md";
 import { useAuth } from "../../context/AuthContext";
 import {
   updateProfile,
@@ -32,22 +31,30 @@ import { useNavigate } from "react-router-dom";
 const PASSWORD_REGEX =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
+// ============================================
+// Toggle Component
+// ============================================
 const Toggle = ({ enabled, onToggle, disabled }) => (
   <button
     onClick={onToggle}
     disabled={disabled}
-    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0 ${
-      enabled ? "bg-[#E91E8C]" : "bg-gray-200"
-    } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+    className={`relative inline-flex h-6 w-11 items-center rounded-full 
+      transition-colors duration-200 focus:outline-none flex-shrink-0 ${
+        enabled ? "bg-[#E91E8C]" : "bg-gray-200"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
   >
     <span
-      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${
-        enabled ? "translate-x-6" : "translate-x-1"
-      }`}
+      className={`inline-block h-4 w-4 transform rounded-full bg-white 
+        shadow transition-transform duration-200 ${
+          enabled ? "translate-x-6" : "translate-x-1"
+        }`}
     />
   </button>
 );
 
+// ============================================
+// Confirm Modal Component
+// ============================================
 const ConfirmModal = ({
   isOpen,
   title,
@@ -67,7 +74,9 @@ const ConfirmModal = ({
           }`}
         >
           <FiAlertCircle
-            className={`text-3xl ${confirmColor === "red" ? "text-red-500" : "text-orange-500"}`}
+            className={`text-3xl ${
+              confirmColor === "red" ? "text-red-500" : "text-orange-500"
+            }`}
           />
         </div>
         <h3 className="text-xl font-bold text-[#1A1A2E] mb-2">{title}</h3>
@@ -95,6 +104,9 @@ const ConfirmModal = ({
   );
 };
 
+// ============================================
+// Main Settings Component
+// ============================================
 const Settings = () => {
   const { user, updateUser, logout } = useAuth();
   const navigate = useNavigate();
@@ -129,20 +141,26 @@ const Settings = () => {
     confirmPassword: "",
   });
 
+  // ✅ UPDATED notifications - removed communityAlerts
   const [notifications, setNotifications] = useState({
     emailAlerts: true,
     whatsappAlerts: true,
     crimeZoneAlerts: true,
-    communityAlerts: true,
   });
 
+  // ✅ UPDATED privacy - removed shareLocationCommunity
+  // Added sendSOSToNearby + receiveSOSFromNearby
+  // Changed anonymousMode behavior
   const [privacy, setPrivacy] = useState({
     shareLocationFamily: true,
-    shareLocationCommunity: false,
+    sendSOSToNearby: false,
+    receiveSOSFromNearby: false,
     anonymousMode: false,
   });
 
-  // ✅ Always fetch fresh from DB on every mount — fixes toggle sync
+  // ============================================
+  // ✅ Fetch fresh settings from DB on mount
+  // ============================================
   useEffect(() => {
     const fetchFreshSettings = async () => {
       try {
@@ -155,25 +173,27 @@ const Settings = () => {
           gender: freshUser.gender || "Other",
         });
 
+        // ✅ Updated notifications - no communityAlerts
         setNotifications({
           emailAlerts: freshUser.settings?.notifications?.emailAlerts ?? true,
           whatsappAlerts:
             freshUser.settings?.notifications?.whatsappAlerts ?? true,
           crimeZoneAlerts:
             freshUser.settings?.notifications?.crimeZoneAlerts ?? true,
-          communityAlerts:
-            freshUser.settings?.notifications?.communityAlerts ?? true,
         });
 
+        // ✅ Updated privacy - new fields
         setPrivacy({
           shareLocationFamily:
             freshUser.settings?.privacy?.shareLocationFamily ?? true,
-          shareLocationCommunity:
-            freshUser.settings?.privacy?.shareLocationCommunity ?? false,
+          sendSOSToNearby:
+            freshUser.settings?.privacy?.sendSOSToNearby ?? false,
+          receiveSOSFromNearby:
+            freshUser.settings?.privacy?.receiveSOSFromNearby ?? false,
           anonymousMode: freshUser.settings?.privacy?.anonymousMode ?? false,
         });
       } catch (error) {
-        // Fallback to cached
+        // ✅ Fallback to cached user
         setProfileForm({
           fullName: user?.fullName || "",
           gender: user?.gender || "Other",
@@ -183,14 +203,13 @@ const Settings = () => {
           whatsappAlerts: user?.settings?.notifications?.whatsappAlerts ?? true,
           crimeZoneAlerts:
             user?.settings?.notifications?.crimeZoneAlerts ?? true,
-          communityAlerts:
-            user?.settings?.notifications?.communityAlerts ?? true,
         });
         setPrivacy({
           shareLocationFamily:
             user?.settings?.privacy?.shareLocationFamily ?? true,
-          shareLocationCommunity:
-            user?.settings?.privacy?.shareLocationCommunity ?? false,
+          sendSOSToNearby: user?.settings?.privacy?.sendSOSToNearby ?? false,
+          receiveSOSFromNearby:
+            user?.settings?.privacy?.receiveSOSFromNearby ?? false,
           anonymousMode: user?.settings?.privacy?.anonymousMode ?? false,
         });
       } finally {
@@ -209,6 +228,9 @@ const Settings = () => {
     { id: "danger", label: "Danger Zone", icon: <FiAlertCircle /> },
   ];
 
+  // ============================================
+  // Profile handlers
+  // ============================================
   const handleSaveProfile = async () => {
     if (!profileForm.fullName.trim()) {
       toast.error("Name is required");
@@ -229,6 +251,9 @@ const Settings = () => {
     }
   };
 
+  // ============================================
+  // Password handlers
+  // ============================================
   const handlePasswordChange = (e) => {
     const { name, value } = e.target;
     setPasswordForm((prev) => ({ ...prev, [name]: value }));
@@ -278,33 +303,31 @@ const Settings = () => {
     }
   };
 
-  // ✅ Toggle notification — save to DB + update context immediately
+  // ============================================
+  // ✅ Toggle notification - save to DB instantly
+  // ============================================
   const handleToggleNotification = async (key) => {
     const updated = { ...notifications, [key]: !notifications[key] };
-    setNotifications(updated); // ✅ Update UI immediately
-
+    setNotifications(updated);
     try {
-      const response = await updateSettings({
-        notifications: updated,
-        privacy,
-      });
-      // ✅ Update context so it persists across pages without refresh
+      await updateSettings({ notifications: updated, privacy });
       const freshResponse = await getProfile();
       updateUser(freshResponse.user);
       toast.success(
         `${updated[key] ? "✅ Enabled" : "❌ Disabled"}: ${key.replace(/([A-Z])/g, " $1").trim()}`,
       );
     } catch (error) {
-      setNotifications(notifications); // Revert on failure
+      setNotifications(notifications);
       toast.error("Failed to save setting");
     }
   };
 
-  // ✅ Toggle privacy — save to DB + update context immediately
+  // ============================================
+  // ✅ Toggle privacy - save to DB instantly
+  // ============================================
   const handleTogglePrivacy = async (key) => {
     const updated = { ...privacy, [key]: !privacy[key] };
     setPrivacy(updated);
-
     try {
       await updateSettings({ notifications, privacy: updated });
       const freshResponse = await getProfile();
@@ -318,6 +341,9 @@ const Settings = () => {
     }
   };
 
+  // ============================================
+  // Confirm modal helpers
+  // ============================================
   const showConfirm = ({
     title,
     message,
@@ -334,6 +360,7 @@ const Settings = () => {
       onConfirm,
     });
   };
+
   const closeConfirm = () =>
     setConfirmModal((prev) => ({ ...prev, isOpen: false }));
 
@@ -363,8 +390,6 @@ const Settings = () => {
       onConfirm: async () => {
         try {
           await clearAlertHistory();
-          // ✅ Also clear family dashboard localStorage alerts
-          localStorage.removeItem("safeguard_family_alerts");
           localStorage.removeItem("safeguard_danger_users");
           toast.success("Alert history cleared ✅");
           closeConfirm();
@@ -398,6 +423,9 @@ const Settings = () => {
     });
   };
 
+  // ============================================
+  // Password strength
+  // ============================================
   const getPasswordStrength = (pass) => {
     if (!pass) return { score: 0, label: "", color: "" };
     let score = 0;
@@ -414,7 +442,9 @@ const Settings = () => {
 
   const strength = getPasswordStrength(passwordForm.newPassword);
 
-  // ✅ Show loader while fetching fresh settings
+  // ============================================
+  // Loading state
+  // ============================================
   if (!settingsLoaded) {
     return (
       <DashboardLayout>
@@ -447,13 +477,15 @@ const Settings = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-4 text-xs sm:text-sm font-semibold whitespace-nowrap transition-all border-b-2 ${
-                  activeTab === tab.id
-                    ? tab.id === "danger"
-                      ? "border-red-500 text-red-500 bg-red-50/50"
-                      : "border-[#E91E8C] text-[#E91E8C] bg-pink-50/50"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
-                }`}
+                className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-4 
+                  text-xs sm:text-sm font-semibold whitespace-nowrap transition-all 
+                  border-b-2 ${
+                    activeTab === tab.id
+                      ? tab.id === "danger"
+                        ? "border-red-500 text-red-500 bg-red-50/50"
+                        : "border-[#E91E8C] text-[#E91E8C] bg-pink-50/50"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
               >
                 <span>{tab.icon}</span>
                 {tab.label}
@@ -462,9 +494,10 @@ const Settings = () => {
           </div>
 
           <div className="p-4 sm:p-6">
-            {/* ===== PROFILE ===== */}
+            {/* ===== PROFILE TAB ===== */}
             {activeTab === "profile" && (
               <div className="space-y-5">
+                {/* Avatar + info */}
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
                   <div className="w-14 h-14 bg-gradient-to-br from-[#E91E8C] to-pink-700 rounded-2xl flex items-center justify-center text-white font-bold text-2xl shadow-lg flex-shrink-0">
                     {user?.fullName?.charAt(0)?.toUpperCase() || "U"}
@@ -478,6 +511,7 @@ const Settings = () => {
                   </div>
                 </div>
 
+                {/* Full Name */}
                 <div>
                   <label className="block text-sm font-semibold text-[#1A1A2E] mb-2">
                     Full Name <span className="text-[#E91E8C]">*</span>
@@ -498,6 +532,7 @@ const Settings = () => {
                   </div>
                 </div>
 
+                {/* Email (disabled) */}
                 <div>
                   <label className="block text-sm font-semibold text-[#1A1A2E] mb-2">
                     Email{" "}
@@ -516,6 +551,7 @@ const Settings = () => {
                   </div>
                 </div>
 
+                {/* Phone (disabled) */}
                 <div>
                   <label className="block text-sm font-semibold text-[#1A1A2E] mb-2">
                     Phone{" "}
@@ -534,6 +570,7 @@ const Settings = () => {
                   </div>
                 </div>
 
+                {/* Gender */}
                 <div>
                   <label className="block text-sm font-semibold text-[#1A1A2E] mb-2">
                     Gender <span className="text-[#E91E8C]">*</span>
@@ -543,7 +580,10 @@ const Settings = () => {
                       <button
                         key={g}
                         onClick={() =>
-                          setProfileForm((prev) => ({ ...prev, gender: g }))
+                          setProfileForm((prev) => ({
+                            ...prev,
+                            gender: g,
+                          }))
                         }
                         className={`flex-1 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${
                           profileForm.gender === g
@@ -572,7 +612,7 @@ const Settings = () => {
               </div>
             )}
 
-            {/* ===== SECURITY ===== */}
+            {/* ===== SECURITY TAB ===== */}
             {activeTab === "security" && (
               <div className="space-y-5">
                 <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-100 rounded-2xl">
@@ -588,6 +628,7 @@ const Settings = () => {
                   </div>
                 </div>
 
+                {/* New Password */}
                 <div>
                   <label className="block text-sm font-semibold text-[#1A1A2E] mb-2">
                     New Password
@@ -600,14 +641,15 @@ const Settings = () => {
                       value={passwordForm.newPassword}
                       onChange={handlePasswordChange}
                       placeholder="Min 8 chars, A-Z, a-z, 0-9, @$!%*?&"
-                      className={`w-full pl-11 pr-12 py-3.5 border-2 rounded-xl bg-gray-50 focus:outline-none transition-colors text-[#1A1A2E] placeholder-gray-400 ${
-                        passwordErrors.newPassword
-                          ? "border-red-400"
-                          : passwordForm.newPassword &&
-                              !passwordErrors.newPassword
-                            ? "border-green-400"
-                            : "border-gray-200 focus:border-[#E91E8C]"
-                      }`}
+                      className={`w-full pl-11 pr-12 py-3.5 border-2 rounded-xl bg-gray-50 
+                        focus:outline-none transition-colors text-[#1A1A2E] placeholder-gray-400 ${
+                          passwordErrors.newPassword
+                            ? "border-red-400"
+                            : passwordForm.newPassword &&
+                                !passwordErrors.newPassword
+                              ? "border-green-400"
+                              : "border-gray-200 focus:border-[#E91E8C]"
+                        }`}
                     />
                     <button
                       type="button"
@@ -617,13 +659,19 @@ const Settings = () => {
                       {showNewPass ? <FiEyeOff /> : <FiEye />}
                     </button>
                   </div>
+
+                  {/* Password strength bars */}
                   {passwordForm.newPassword && (
                     <div className="mt-2">
                       <div className="flex gap-1 mb-1">
                         {[1, 2, 3, 4, 5].map((i) => (
                           <div
                             key={i}
-                            className={`h-1.5 flex-1 rounded-full transition-all ${i <= strength.score ? strength.color : "bg-gray-200"}`}
+                            className={`h-1.5 flex-1 rounded-full transition-all ${
+                              i <= strength.score
+                                ? strength.color
+                                : "bg-gray-200"
+                            }`}
                           />
                         ))}
                       </div>
@@ -649,6 +697,7 @@ const Settings = () => {
                   )}
                 </div>
 
+                {/* Confirm Password */}
                 <div>
                   <label className="block text-sm font-semibold text-[#1A1A2E] mb-2">
                     Confirm New Password
@@ -661,15 +710,16 @@ const Settings = () => {
                       value={passwordForm.confirmPassword}
                       onChange={handlePasswordChange}
                       placeholder="Re-enter new password"
-                      className={`w-full pl-11 pr-12 py-3.5 border-2 rounded-xl bg-gray-50 focus:outline-none transition-colors text-[#1A1A2E] placeholder-gray-400 ${
-                        passwordErrors.confirmPassword
-                          ? "border-red-400"
-                          : passwordForm.confirmPassword &&
-                              passwordForm.newPassword ===
-                                passwordForm.confirmPassword
-                            ? "border-green-400"
-                            : "border-gray-200 focus:border-[#E91E8C]"
-                      }`}
+                      className={`w-full pl-11 pr-12 py-3.5 border-2 rounded-xl bg-gray-50 
+                        focus:outline-none transition-colors text-[#1A1A2E] placeholder-gray-400 ${
+                          passwordErrors.confirmPassword
+                            ? "border-red-400"
+                            : passwordForm.confirmPassword &&
+                                passwordForm.newPassword ===
+                                  passwordForm.confirmPassword
+                              ? "border-green-400"
+                              : "border-gray-200 focus:border-[#E91E8C]"
+                        }`}
                     />
                     <button
                       type="button"
@@ -691,6 +741,7 @@ const Settings = () => {
                   )}
                 </div>
 
+                {/* Password requirements */}
                 <div className="bg-gray-50 rounded-xl p-4">
                   <p className="text-xs font-semibold text-gray-500 mb-2">
                     Password must contain:
@@ -720,14 +771,18 @@ const Settings = () => {
                     ].map((req, i) => (
                       <div key={i} className="flex items-center gap-2">
                         <div
-                          className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${req.test ? "bg-green-500" : "bg-gray-200"}`}
+                          className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${
+                            req.test ? "bg-green-500" : "bg-gray-200"
+                          }`}
                         >
                           {req.test && (
                             <FiCheck className="text-white text-xs" />
                           )}
                         </div>
                         <span
-                          className={`text-xs ${req.test ? "text-green-600" : "text-gray-400"}`}
+                          className={`text-xs ${
+                            req.test ? "text-green-600" : "text-gray-400"
+                          }`}
                         >
                           {req.label}
                         </span>
@@ -765,38 +820,33 @@ const Settings = () => {
                     📢 Alert Settings
                   </p>
                   <p className="text-blue-600 text-xs leading-relaxed">
-                    Toggle to control how emergency alerts are sent. Changes
-                    save instantly.
+                    Control how emergency alerts are sent to your contacts.
+                    Changes save instantly.
                   </p>
                 </div>
+
+                {/* ✅ Only 3 items - communityAlerts REMOVED */}
                 {[
                   {
                     key: "emailAlerts",
                     icon: "📧",
                     title: "Email Alerts",
-                    desc: "When OFF — no emails sent to contacts during alert",
+                    desc: "When OFF — no emails sent to emergency contacts during alert",
                     bg: "bg-blue-50",
                   },
                   {
                     key: "whatsappAlerts",
                     icon: "📱",
                     title: "WhatsApp Alerts",
-                    desc: "When OFF — no WhatsApp messages sent during alert",
+                    desc: "When OFF — no WhatsApp messages sent to emergency contacts during alert",
                     bg: "bg-green-50",
                   },
                   {
                     key: "crimeZoneAlerts",
                     icon: "⚠️",
                     title: "Crime Zone Warnings",
-                    desc: "Get notified when entering high-risk areas (coming soon)",
+                    desc: "Get notified when entering high-risk areas",
                     bg: "bg-orange-50",
-                  },
-                  {
-                    key: "communityAlerts",
-                    icon: "🤝",
-                    title: "Community Alerts",
-                    desc: "When ON — nearby users also notified in your emergency",
-                    bg: "bg-purple-50",
                   },
                 ].map((item) => (
                   <div
@@ -835,70 +885,164 @@ const Settings = () => {
                     🔐 Privacy Controls
                   </p>
                   <p className="text-purple-600 text-xs leading-relaxed">
-                    Control who receives your alerts. Changes save instantly.
+                    Control who receives your alerts and what information is
+                    shared. Changes save instantly.
                   </p>
                 </div>
-                {[
-                  {
-                    key: "shareLocationFamily",
-                    icon: "👨‍👩‍👧",
-                    title: "Share with Emergency Contacts",
-                    desc: "When ON — your contacts receive real-time location & emergency alerts",
-                    bg: "bg-pink-50",
-                  },
-                  {
-                    key: "shareLocationCommunity",
-                    icon: "🌍",
-                    title: "Share with SafeGuard Community",
-                    desc: "When ON — all registered SafeGuard users get community emergency notification",
-                    bg: "bg-blue-50",
-                  },
-                  {
-                    key: "anonymousMode",
-                    icon: "🕵️",
-                    title: "Anonymous Mode",
-                    desc: "When ON — your name is hidden in community alerts, only location shared",
-                    bg: "bg-gray-50",
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.key}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 gap-4"
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div
-                        className={`w-10 h-10 ${item.bg} rounded-xl flex items-center justify-center text-lg flex-shrink-0`}
-                      >
-                        {item.icon}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-[#1A1A2E] text-sm">
-                          {item.title}
-                        </p>
-                        <p className="text-gray-400 text-xs leading-relaxed">
-                          {item.desc}
-                        </p>
-                      </div>
+
+                {/* ✅ Section 1 - Family */}
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider pt-2">
+                  Family & Contacts
+                </p>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 gap-4">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-10 h-10 bg-pink-50 rounded-xl flex items-center justify-center text-lg flex-shrink-0">
+                      👨‍👩‍👧
                     </div>
-                    <Toggle
-                      enabled={privacy[item.key]}
-                      onToggle={() => handleTogglePrivacy(item.key)}
-                    />
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[#1A1A2E] text-sm">
+                        Share Location with Family
+                      </p>
+                      <p className="text-gray-400 text-xs leading-relaxed">
+                        When ON — your emergency contacts receive real-time
+                        location and emergency alerts
+                      </p>
+                    </div>
                   </div>
-                ))}
+                  <Toggle
+                    enabled={privacy.shareLocationFamily}
+                    onToggle={() => handleTogglePrivacy("shareLocationFamily")}
+                  />
+                </div>
+
+                {/* ✅ Section 2 - Community (NEW) */}
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider pt-2">
+                  Community Safety Network
+                </p>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-2">
+                  <p className="text-amber-700 text-xs font-semibold mb-1">
+                    ℹ️ How Community Alerts Work
+                  </p>
+                  <p className="text-amber-600 text-xs leading-relaxed">
+                    When you send SOS — nearby SafeGuard users who opted in
+                    receive an anonymous alert with only your gender, distance
+                    and area name. No exact address unless Anonymous Mode is ON.
+                    Nearby users can call police or come to help.
+                  </p>
+                </div>
+
+                {/* Send SOS to nearby */}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 gap-4">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-lg flex-shrink-0">
+                      📣
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[#1A1A2E] text-sm">
+                        Send My SOS to Nearby Users
+                      </p>
+                      <p className="text-gray-400 text-xs leading-relaxed">
+                        When ON — nearby SafeGuard users also get notified when
+                        you trigger emergency SOS
+                      </p>
+                    </div>
+                  </div>
+                  <Toggle
+                    enabled={privacy.sendSOSToNearby}
+                    onToggle={() => handleTogglePrivacy("sendSOSToNearby")}
+                  />
+                </div>
+
+                {/* Receive SOS from nearby */}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 gap-4">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-lg flex-shrink-0">
+                      🔔
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[#1A1A2E] text-sm">
+                        Receive SOS from Nearby Users
+                      </p>
+                      <p className="text-gray-400 text-xs leading-relaxed">
+                        When ON — you will be notified when someone nearby
+                        triggers emergency SOS and needs help
+                      </p>
+                    </div>
+                  </div>
+                  <Toggle
+                    enabled={privacy.receiveSOSFromNearby}
+                    onToggle={() => handleTogglePrivacy("receiveSOSFromNearby")}
+                  />
+                </div>
+
+                {/* ✅ Section 3 - Anonymous Mode (CHANGED behavior) */}
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider pt-2">
+                  Identity & Location
+                </p>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 gap-4">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-lg flex-shrink-0">
+                      🕵️
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[#1A1A2E] text-sm">
+                        Anonymous Mode
+                      </p>
+                      <p className="text-gray-400 text-xs leading-relaxed">
+                        {privacy.anonymousMode ? (
+                          <span className="text-orange-500 font-semibold">
+                            ON — Your name + exact location sent to nearby users
+                            in emergency
+                          </span>
+                        ) : (
+                          <span>
+                            OFF (Recommended) — Only gender, distance and area
+                            name shared with nearby users. Your exact location
+                            is protected.
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <Toggle
+                    enabled={privacy.anonymousMode}
+                    onToggle={() => handleTogglePrivacy("anonymousMode")}
+                  />
+                </div>
+
+                {/* ✅ Warning when anonymous mode is ON */}
+                {privacy.anonymousMode && (
+                  <div className="p-4 bg-orange-50 border border-orange-200 rounded-2xl">
+                    <p className="text-orange-700 text-sm font-semibold mb-1">
+                      ⚠️ Anonymous Mode is ON
+                    </p>
+                    <p className="text-orange-600 text-xs leading-relaxed">
+                      Your <strong>full name</strong> and{" "}
+                      <strong>exact location</strong> will be shared with nearby
+                      SafeGuard users when you trigger SOS. This helps them find
+                      you faster but shares more personal information.
+                    </p>
+                  </div>
+                )}
+
+                {/* Data safety note */}
                 <div className="p-4 bg-green-50 border border-green-100 rounded-2xl">
                   <p className="text-green-700 text-sm font-semibold mb-1">
                     🔒 Your Data is Safe
                   </p>
                   <p className="text-green-600 text-xs leading-relaxed">
                     SafeGuard only uses your location for safety. We never sell
-                    data. Everything is encrypted.
+                    data. Everything is encrypted. Nearby alert records
+                    auto-delete after 24 hours.
                   </p>
                 </div>
               </div>
             )}
 
-            {/* ===== DANGER ZONE ===== */}
+            {/* ===== DANGER ZONE TAB ===== */}
             {activeTab === "danger" && (
               <div className="space-y-4">
                 <div className="p-4 bg-red-50 border border-red-200 rounded-2xl">
@@ -910,6 +1054,7 @@ const Settings = () => {
                   </p>
                 </div>
 
+                {/* Logout All */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-gray-50 border border-gray-200 rounded-2xl">
                   <div>
                     <p className="font-semibold text-[#1A1A2E] text-sm flex items-center gap-2">
@@ -928,13 +1073,14 @@ const Settings = () => {
                   </button>
                 </div>
 
+                {/* Clear History */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-gray-50 border border-gray-200 rounded-2xl">
                   <div>
                     <p className="font-semibold text-[#1A1A2E] text-sm flex items-center gap-2">
                       <FiBell className="text-red-400" /> Clear Alert History
                     </p>
                     <p className="text-gray-400 text-xs mt-0.5">
-                      Permanently delete all emergency alerts from DB
+                      Permanently delete all your emergency alerts from DB
                     </p>
                   </div>
                   <button
@@ -945,6 +1091,7 @@ const Settings = () => {
                   </button>
                 </div>
 
+                {/* Delete Account */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-red-50 border border-red-300 rounded-2xl">
                   <div>
                     <p className="font-bold text-red-700 text-sm flex items-center gap-2">

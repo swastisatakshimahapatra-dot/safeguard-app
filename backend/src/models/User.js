@@ -48,7 +48,7 @@ const userSchema = new mongoose.Schema(
       default: true,
     },
 
-    // ✅ Email verification fields
+    // ✅ Email verification
     isEmailVerified: {
       type: Boolean,
       default: false,
@@ -62,6 +62,17 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ✅ Last known location
+    // Updated on registration + every time live tracking updates
+    lastKnownLocation: {
+      latitude: { type: Number, default: null },
+      longitude: { type: Number, default: null },
+      city: { type: String, default: null },
+      area: { type: String, default: null },
+      updatedAt: { type: Date, default: null },
+    },
+
+    // ✅ Family linking
     linkedUsers: [
       {
         userId: {
@@ -71,16 +82,23 @@ const userSchema = new mongoose.Schema(
         relation: String,
       },
     ],
+
     settings: {
       notifications: {
         emailAlerts: { type: Boolean, default: true },
         whatsappAlerts: { type: Boolean, default: true },
         crimeZoneAlerts: { type: Boolean, default: true },
-        communityAlerts: { type: Boolean, default: true },
+        // ✅ REMOVED: communityAlerts
       },
       privacy: {
         shareLocationFamily: { type: Boolean, default: true },
-        shareLocationCommunity: { type: Boolean, default: false },
+        // ✅ REMOVED: shareLocationCommunity
+        // ✅ NEW: Two separate toggles
+        sendSOSToNearby: { type: Boolean, default: false },
+        receiveSOSFromNearby: { type: Boolean, default: false },
+        // ✅ CHANGED: anonymousMode behavior
+        // OFF = send gender + distance + area only (default, safer)
+        // ON  = send name + exact location in nearby alerts
         anonymousMode: { type: Boolean, default: false },
       },
     },

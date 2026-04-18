@@ -8,6 +8,7 @@ import locationRoutes from "./src/routes/locationRoutes.js";
 import authRoutes from "./src/routes/authRoutes.js";
 import alertRoutes from "./src/routes/alertRoutes.js";
 import contactRoutes from "./src/routes/contactRoutes.js";
+import nearbyAlertRoutes from "./src/routes/nearbyAlertRoutes.js";
 
 dotenv.config();
 
@@ -37,6 +38,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/location", locationRoutes);
 app.use("/api/alert", alertRoutes);
 app.use("/api/contacts", contactRoutes);
+app.use("/api/nearby-alerts", nearbyAlertRoutes);
 
 app.get("/", (req, res) => res.send("SafeGuard API Running 🚀"));
 

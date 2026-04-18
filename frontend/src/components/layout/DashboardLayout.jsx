@@ -15,6 +15,7 @@ import {
 import { MdSecurity, MdFamilyRestroom } from "react-icons/md";
 import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
+import { MdLocalPolice } from "react-icons/md";
 
 // ✅ User menu items
 const userMenuItems = [
@@ -22,6 +23,7 @@ const userMenuItems = [
   { icon: <FiMapPin />, label: "Live Location", path: "/location" },
   { icon: <FiUsers />, label: "Emergency Contacts", path: "/contacts" },
   { icon: <FiBell />, label: "Alert History", path: "/alerts" },
+  { icon: <MdLocalPolice />, label: "Police Stations", path: "/police-stations" }, // ✅ ADD
   { icon: <FiSettings />, label: "Settings", path: "/settings" },
 ];
 

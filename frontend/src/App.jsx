@@ -21,6 +21,7 @@ import FamilyDashboard from "./pages/family/FamilyDashboard";
 import VerifyEmail from "./pages/VerifyEmail";
 
 import ScrollManager from "./utils/ScrollManager";
+import PoliceStations from "./pages/user/PoliceStations";
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { isAuthenticated, user, loading } = useAuth();
@@ -139,6 +140,15 @@ function AppRoutes() {
           element={
             <ProtectedRoute allowedRoles={["family"]}>
               <FamilyDashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/police-stations"
+          element={
+            <ProtectedRoute allowedRoles={["user", "admin"]}>
+              <PoliceStations />
             </ProtectedRoute>
           }
         />

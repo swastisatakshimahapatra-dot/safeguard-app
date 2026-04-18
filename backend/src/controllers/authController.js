@@ -6,6 +6,8 @@ import Alert from "../models/Alert.js";
 import Location from "../models/Location.js";
 import LinkRequest from "../models/LinkRequest.js";
 import sendEmail from "../utils/sendEmail.js";
+import NearbyAlert from "../models/NearbyAlert.js";
+import NearbyAlertHistory from "../models/NearbyAlertHistory.js";
 
 const generateToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
@@ -71,8 +73,17 @@ const verificationEmailTemplate = (userName, verifyUrl) => `
 // ✅ REGISTER - Send verification email
 export const register = async (req, res) => {
   try {
-    const { fullName, email, phone, password, gender, role, contacts } =
-      req.body;
+    const {
+      fullName,
+      email,
+      phone,
+      password,
+      gender,
+      role,
+      contacts,
+      latitude, // ✅ NEW - from registration form
+      longitude, // ✅ NEW - from registration form
+    } = req.body;
 
     if (!fullName || !email || !phone || !password) {
       return res.status(400).json({
@@ -89,22 +100,18 @@ export const register = async (req, res) => {
           message: "Email already registered. Please login.",
         });
       } else {
-        // ✅ Resend with SAME token update
         const verifyToken = crypto.randomBytes(32).toString("hex");
         existingUser.emailVerifyToken = verifyToken;
         existingUser.emailVerifyExpires = new Date(
           Date.now() + 24 * 60 * 60 * 1000,
         );
         await existingUser.save();
-
-        // ✅ Send email with the NEW token that is NOW in DB
         const verifyUrl = `${process.env.FRONTEND_URL}/verify-email/${verifyToken}`;
         await sendEmail(
           email,
           "✅ Verify Your SafeGuard Email",
           verificationEmailTemplate(existingUser.fullName, verifyUrl),
         );
-
         return res.status(200).json({
           success: true,
           message: "Verification email resent! Please check your inbox.",
@@ -117,10 +124,28 @@ export const register = async (req, res) => {
       ? contacts.filter((c) => c.name && c.phone)
       : [];
 
-    // ✅ Generate ONE token
     const verifyToken = crypto.randomBytes(32).toString("hex");
 
-    // ✅ Create user with that token
+    // ✅ Get city/area from registration coords if provided
+    let lastKnownLocation = {
+      latitude: null,
+      longitude: null,
+      city: null,
+      area: null,
+      updatedAt: null,
+    };
+
+    if (latitude && longitude) {
+      const { city, area } = await getCityFromCoords(latitude, longitude);
+      lastKnownLocation = {
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        city,
+        area,
+        updatedAt: new Date(),
+      };
+    }
+
     const user = await User.create({
       fullName,
       email,
@@ -132,14 +157,10 @@ export const register = async (req, res) => {
       isEmailVerified: false,
       emailVerifyToken: verifyToken,
       emailVerifyExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      lastKnownLocation, // ✅ Save location from registration
     });
 
-    // ✅ Send email with SAME token that is in DB
     const verifyUrl = `${process.env.FRONTEND_URL}/verify-email/${verifyToken}`;
-
-    console.log("✅ Token saved in DB:", verifyToken);
-    console.log("✅ Verify URL sent in email:", verifyUrl);
-
     await sendEmail(
       email,
       "✅ Verify Your SafeGuard Email",
@@ -148,8 +169,7 @@ export const register = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message:
-        "Account created! Please check your email to verify your account.",
+      message: "Account created! Please check your email to verify.",
       requiresVerification: true,
     });
   } catch (error) {
@@ -508,14 +528,23 @@ export const deleteAccount = async (req, res) => {
     const userId = req.user.id;
     await Alert.deleteMany({ userId });
     await Location.deleteMany({ userId });
+    // ✅ NEW - clean nearby alert data
+    await NearbyAlert.deleteMany({
+      $or: [{ victimId: userId }, { receiverId: userId }],
+    });
+    await NearbyAlertHistory.deleteMany({
+      $or: [{ victimId: userId }, { receiverId: userId }],
+    });
     await User.findByIdAndDelete(userId);
-    res
-      .status(200)
-      .json({ success: true, message: "Account deleted successfully" });
+    res.status(200).json({
+      success: true,
+      message: "Account deleted successfully",
+    });
   } catch (error) {
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to delete account" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete account",
+    });
   }
 };
 
@@ -753,5 +782,34 @@ export const respondToLinkRequest = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "Failed to respond" });
+  }
+};
+
+const getCityFromCoords = async (latitude, longitude) => {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`,
+      { headers: { "User-Agent": "SafeGuard-Safety-App/1.0" } },
+    );
+    const data = await response.json();
+
+    const city =
+      data.address?.city ||
+      data.address?.town ||
+      data.address?.village ||
+      data.address?.county ||
+      null;
+
+    const area =
+      data.address?.suburb ||
+      data.address?.neighbourhood ||
+      data.address?.quarter ||
+      data.address?.district ||
+      city ||
+      null;
+
+    return { city, area };
+  } catch {
+    return { city: null, area: null };
   }
 };

@@ -19,7 +19,7 @@ import { registerUser } from "../services/authService";
 import { checkEmailExists } from "../services/authService";
 import api from "../services/api";
 
-// ✅ MOVED OUTSIDE - This is the fix
+// ✅ MOVED OUTSIDE
 const InputField = ({
   label,
   name,
@@ -62,6 +62,53 @@ const InputField = ({
 );
 
 // ============================================
+// ✅ GEOLOCATION HELPER FUNCTION
+// ============================================
+const getLocationSilently = () => {
+  return new Promise((resolve) => {
+    // ✅ If browser doesn't support geolocation
+    if (!navigator.geolocation) {
+      console.log("Geolocation not supported");
+      resolve({ latitude: null, longitude: null });
+      return;
+    }
+
+    // ✅ Timeout after 10 seconds
+    const timeoutId = setTimeout(() => {
+      console.log("Geolocation timeout - proceeding without location");
+      resolve({ latitude: null, longitude: null });
+    }, 10000);
+
+    // ✅ Request location
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        clearTimeout(timeoutId);
+        const { latitude, longitude } = position.coords;
+        console.log("✅ Location fetched:", { latitude, longitude });
+        resolve({ latitude, longitude });
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        // ✅ Handle different error types
+        if (error.code === error.PERMISSION_DENIED) {
+          console.log("User denied location permission");
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          console.log("Position information unavailable");
+        } else if (error.code === error.TIMEOUT) {
+          console.log("Location request timed out");
+        }
+        resolve({ latitude: null, longitude: null });
+      },
+      {
+        timeout: 10000, // ✅ 10 second timeout
+        enableHighAccuracy: false, // ✅ Not high precision to be faster
+        maximumAge: 0, // ✅ Get fresh location
+      },
+    );
+  });
+};
+
+// ============================================
 // ✅ MAIN REGISTER COMPONENT
 // ============================================
 const Register = () => {
@@ -75,6 +122,13 @@ const Register = () => {
   const [errors, setErrors] = useState({});
   const [passwordError, setPasswordError] = useState("");
   const [isRedirecting, setIsRedirecting] = useState(false);
+
+  // ✅ Add location state
+  const [locationData, setLocationData] = useState({
+    latitude: null,
+    longitude: null,
+    fetching: false,
+  });
 
   // ✅ Move formData UP - before all useEffects
   const [formData, setFormData] = useState({
@@ -398,6 +452,7 @@ const Register = () => {
     return true;
   };
 
+  // ✅ UPDATED handleNext with geolocation
   const handleNext = async () => {
     if (step === 1) {
       if (!validateStep1()) return;
@@ -451,11 +506,11 @@ const Register = () => {
 
         setStep((prev) => prev + 1);
         setErrors({});
-        window.scrollTo({ top: 0, behavior: "instant" }); // ✅ Scroll top on next
+        window.scrollTo({ top: 0, behavior: "instant" });
       } catch (error) {
         setStep((prev) => prev + 1);
         setErrors({});
-        window.scrollTo({ top: 0, behavior: "instant" }); // ✅ Scroll top on next
+        window.scrollTo({ top: 0, behavior: "instant" });
       } finally {
         setLoading(false);
       }
@@ -464,18 +519,41 @@ const Register = () => {
 
     if (step === 2 && !validateStep2()) return;
     if (step === 3 && !validateStep3()) return;
+
+    // ✅ STEP 3 → STEP 4 — START GEOLOCATION REQUEST
+    if (step === 3) {
+      console.log("📍 Starting silent geolocation request...");
+      setLocationData((prev) => ({ ...prev, fetching: true }));
+
+      // ✅ Start geolocation in background
+      const location = await getLocationSilently();
+      setLocationData({
+        latitude: location.latitude,
+        longitude: location.longitude,
+        fetching: false,
+      });
+
+      if (location.latitude && location.longitude) {
+        console.log("✅ Location captured:", location);
+        toast.success("📍 Location detected", { duration: 2000 });
+      } else {
+        console.log("⚠️ Location not available - proceeding without");
+        // ✅ Don't show error - silently proceed
+      }
+    }
+
     setStep((prev) => prev + 1);
     setErrors({});
-    window.scrollTo({ top: 0, behavior: "instant" }); // ✅ Scroll top on next
+    window.scrollTo({ top: 0, behavior: "instant" });
   };
 
   const handleBack = () => {
     setStep((prev) => prev - 1);
     setErrors({});
-    window.scrollTo({ top: 0, behavior: "instant" }); // ✅ Scroll top on back
+    window.scrollTo({ top: 0, behavior: "instant" });
   };
 
-  // ✅ Submit
+  // ✅ UPDATED Submit with location data
   const handleSubmit = async () => {
     if (!formData.terms) {
       toast.error("Please accept terms and conditions");
@@ -491,6 +569,9 @@ const Register = () => {
         gender: formData.gender,
         role: formData.role,
         contacts: formData.contacts,
+        // ✅ Send location if available
+        latitude: locationData.latitude,
+        longitude: locationData.longitude,
       });
 
       if (response.requiresVerification) {
@@ -619,7 +700,7 @@ const Register = () => {
               onClick={async () => {
                 setLoading(true);
                 try {
-                  await sendVerificationEmail({
+                  await api.post("/auth/send-verification", {
                     fullName: formData.fullName,
                     email: formData.email,
                     phone: formData.phone,
@@ -646,7 +727,7 @@ const Register = () => {
                 localStorage.removeItem("safeguard_verify_sent");
                 localStorage.removeItem("safeguard_verify_email");
                 setVerificationSent(false);
-                setIsRedirecting(false); // ✅ Reset redirect state
+                setIsRedirecting(false);
                 setStep(1);
                 window.scrollTo({ top: 0, behavior: "instant" });
               }}
@@ -691,7 +772,7 @@ const Register = () => {
                 >
                   {s < step ? <FiCheck /> : s}
                 </div>
-                {s < totalSteps && (
+                {s < 4 && (
                   <div
                     className={`h-1 w-6 sm:w-12 lg:w-20 mx-0.5 sm:mx-1 rounded-full transition-all duration-300 ${
                       s < step ? "bg-green-500" : "bg-gray-100"
@@ -710,9 +791,31 @@ const Register = () => {
               {step === 3 && "Select Your Role"}
               {step === 4 && "Review & Confirm"}
             </h2>
-            <p className="text-gray-500 text-sm mt-1">
-              Step {step} of {totalSteps}
-            </p>
+            <p className="text-gray-500 text-sm mt-1">Step {step} of 4</p>
+
+            {/* ✅ Location fetching indicator on Step 3→4 transition */}
+            {step === 4 && locationData.fetching && (
+              <p className="text-[#E91E8C] text-xs mt-2 flex items-center justify-center gap-1">
+                <span className="w-1.5 h-1.5 bg-[#E91E8C] rounded-full animate-pulse"></span>
+                Detecting location in background...
+              </p>
+            )}
+
+            {/* ✅ Location success indicator */}
+            {step === 4 && !locationData.fetching && locationData.latitude && (
+              <p className="text-green-600 text-xs mt-2 flex items-center justify-center gap-1">
+                <span>✅</span>
+                Location detected - will be saved
+              </p>
+            )}
+
+            {/* ✅ Location not available indicator */}
+            {step === 4 && !locationData.fetching && !locationData.latitude && (
+              <p className="text-gray-400 text-xs mt-2 flex items-center justify-center gap-1">
+                <span>📍</span>
+                Location not available - no problem!
+              </p>
+            )}
           </div>
 
           {/* ============ STEP 1 ============ */}
@@ -1180,6 +1283,13 @@ const Register = () => {
                       label: "Emergency Contacts",
                       value: `${formData.contacts.filter((c) => c.name && c.phone).length} added`,
                     },
+                    {
+                      label: "Location",
+                      value:
+                        locationData.latitude && locationData.longitude
+                          ? `📍 Detected (${locationData.latitude.toFixed(4)}°, ${locationData.longitude.toFixed(4)}°)`
+                          : "📍 Not detected (will add from live tracking later)",
+                    },
                   ].map((item) => (
                     <div
                       key={item.label}
@@ -1256,11 +1366,12 @@ const Register = () => {
               </Link>
             )}
 
-            {step < totalSteps && (
+            {step < 4 && (
               <button
                 type="button"
                 onClick={handleNext}
-                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-[#E91E8C] to-pink-600 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-pink-300 hover:-translate-y-0.5 transition-all"
+                disabled={loading}
+                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-[#E91E8C] to-pink-600 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-pink-300 hover:-translate-y-0.5 transition-all disabled:opacity-70"
               >
                 Next <FiArrowRight />
               </button>

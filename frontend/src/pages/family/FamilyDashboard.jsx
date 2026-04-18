@@ -23,6 +23,7 @@ import {
   sendLinkRequest,
   unlinkUser,
 } from "../../services/authService";
+import { fetchFamilyAlerts } from "../../services/alertService";
 import toast from "react-hot-toast";
 import L from "leaflet";
 import { formatDistanceToNow, format } from "date-fns";
@@ -66,7 +67,7 @@ const relations = [
   "Other",
 ];
 
-const ALERTS_KEY = "safeguard_family_alerts";
+// ✅ REMOVED localStorage keys - alerts now come from DB
 const DANGER_KEY = "safeguard_danger_users";
 
 const FamilyDashboard = () => {
@@ -78,18 +79,12 @@ const FamilyDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [mapPosition, setMapPosition] = useState([20.5937, 78.9629]);
+  const [alertsLoading, setAlertsLoading] = useState(true);
 
-  // ✅ Persist alerts
-  const [alerts, setAlerts] = useState(() => {
-    try {
-      const saved = localStorage.getItem(ALERTS_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  // ✅ Alerts now from DB - no localStorage
+  const [alerts, setAlerts] = useState([]);
 
-  // ✅ Persist danger state
+  // ✅ Keep danger state in localStorage (UI state only)
   const [dangerUsers, setDangerUsers] = useState(() => {
     try {
       const saved = localStorage.getItem(DANGER_KEY);
@@ -104,14 +99,37 @@ const FamilyDashboard = () => {
   const [linkLoading, setLinkLoading] = useState(false);
   const [unlinkTarget, setUnlinkTarget] = useState(null);
 
-  // ✅ Sync to localStorage
-  useEffect(() => {
-    localStorage.setItem(ALERTS_KEY, JSON.stringify(alerts.slice(0, 50)));
-  }, [alerts]);
-
   useEffect(() => {
     localStorage.setItem(DANGER_KEY, JSON.stringify(dangerUsers));
   }, [dangerUsers]);
+
+  // ✅ Load family alerts from DB
+  const loadFamilyAlerts = async () => {
+    setAlertsLoading(true);
+    try {
+      const response = await fetchFamilyAlerts();
+      const dbAlerts = (response.alerts || []).map((a) => ({
+        id: a._id,
+        userId: a.triggeredBy?.userId,
+        userName: a.triggeredBy?.userName,
+        type: a.type,
+        address: a.location?.address,
+        mapsLink: a.location?.available ? a.location?.mapsLink : null,
+        latitude: a.location?.available ? a.location?.latitude : null,
+        longitude: a.location?.available ? a.location?.longitude : null,
+        locationAvailable: a.location?.available || false,
+        timestamp: a.createdAt,
+      }));
+      setAlerts(dbAlerts);
+      console.log(`✅ Loaded ${dbAlerts.length} family alerts from DB`);
+    } catch (error) {
+      console.error("Failed to load family alerts:", error);
+      // ✅ Don't show error toast - just use socket data
+      setAlerts([]);
+    } finally {
+      setAlertsLoading(false);
+    }
+  };
 
   const loadLinkedUsers = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -138,9 +156,10 @@ const FamilyDashboard = () => {
 
   useEffect(() => {
     loadLinkedUsers();
+    // ✅ Load alerts from DB on mount
+    loadFamilyAlerts();
   }, []);
 
-  // ✅ Socket - join family room + listen for events
   useEffect(() => {
     if (!socket) return;
 
@@ -149,29 +168,20 @@ const FamilyDashboard = () => {
       socket.emit("join_room", userId.toString());
     }
 
-    // ✅ Watch all currently linked users
     linkedUsers.forEach((u) => {
       socket.emit("watch_user", u.id.toString());
     });
 
-    // ✅ REAL-TIME: User accepted monitoring request
     const handleLinkAccepted = (data) => {
-      console.log("✅ Link accepted, adding user:", data.user);
       const newUser = data.user;
-
       setLinkedUsers((prev) => {
-        // Avoid duplicates
         const exists = prev.some(
           (u) => u.id?.toString() === newUser.id?.toString(),
         );
         if (exists) return prev;
         return [...prev, newUser];
       });
-
-      // ✅ Start watching the new user immediately
       socket.emit("watch_user", newUser.id.toString());
-
-      // Auto select if no one selected
       setSelectedUser((prev) => {
         if (!prev) {
           if (newUser.location) {
@@ -184,23 +194,17 @@ const FamilyDashboard = () => {
         }
         return prev;
       });
-
-      toast.success(
-        `✅ ${newUser.name} accepted your request! You can now monitor them.`,
-        {
-          duration: 5000,
-        },
-      );
+      toast.success(`✅ ${newUser.name} accepted your request!`, {
+        duration: 5000,
+      });
     };
 
-    // ✅ User denied request
     const handleLinkDenied = (data) => {
       toast.error(`❌ ${data.userName} denied your monitoring request.`, {
         duration: 5000,
       });
     };
 
-    // ✅ Real-time location update
     const handleLocationUpdate = (data) => {
       setLinkedUsers((prev) =>
         prev.map((u) =>
@@ -218,7 +222,6 @@ const FamilyDashboard = () => {
             : u,
         ),
       );
-
       setSelectedUser((prev) => {
         if (prev?.id?.toString() === data.userId?.toString()) {
           const updated = {
@@ -237,19 +240,25 @@ const FamilyDashboard = () => {
       });
     };
 
-    // ✅ Emergency alert
+    // ✅ Emergency alert - reload from DB + add to state
     const handleEmergencyAlert = (data) => {
       const sosTime = new Date().toISOString();
 
+      // ✅ Only store real location data
+      const hasLocation =
+        data.locationAvailable && data.latitude && data.longitude;
+
       const newAlert = {
-        id: `alert_${Date.now()}`,
+        id: data.familyAlertId || `alert_${Date.now()}`,
         userId: data.userId,
         userName: data.userName,
         type: data.type,
         address: data.address,
-        mapsLink: data.mapsLink,
-        latitude: data.latitude,
-        longitude: data.longitude,
+        // ✅ Never show map button if no location
+        mapsLink: hasLocation ? data.mapsLink : null,
+        latitude: hasLocation ? data.latitude : null,
+        longitude: hasLocation ? data.longitude : null,
+        locationAvailable: hasLocation,
         timestamp: sosTime,
       };
 
@@ -263,20 +272,20 @@ const FamilyDashboard = () => {
         },
       }));
 
-      // Update location time to SOS time
       setLinkedUsers((prev) =>
         prev.map((u) =>
           u.id?.toString() === data.userId?.toString()
             ? {
                 ...u,
-                location: u.location
-                  ? {
-                      ...u.location,
-                      latitude: data.latitude || u.location.latitude,
-                      longitude: data.longitude || u.location.longitude,
-                      lastUpdated: sosTime,
-                    }
-                  : u.location,
+                location:
+                  u.location && hasLocation
+                    ? {
+                        ...u.location,
+                        latitude: data.latitude,
+                        longitude: data.longitude,
+                        lastUpdated: sosTime,
+                      }
+                    : u.location,
               }
             : u,
         ),
@@ -287,16 +296,83 @@ const FamilyDashboard = () => {
       });
     };
 
+    const handleDangerZoneEntry = (data) => {
+      const { userId, zoneName, riskLevel, latitude, longitude, timestamp } =
+        data;
+      setLinkedUsers((prev) => {
+        const foundUser = prev.find(
+          (u) => u.id?.toString() === userId?.toString(),
+        );
+        const userName = foundUser?.name || "User";
+        const dangerAlert = {
+          id: `danger_${Date.now()}`,
+          userId,
+          userName,
+          type: `Entered ${riskLevel.toUpperCase()} Risk Zone`,
+          address: zoneName,
+          mapsLink:
+            latitude && longitude
+              ? `https://maps.google.com/?q=${latitude},${longitude}`
+              : null,
+          latitude: latitude || null,
+          longitude: longitude || null,
+          locationAvailable: !!(latitude && longitude),
+          timestamp: timestamp || new Date().toISOString(),
+        };
+        setAlerts((alertsPrev) => [dangerAlert, ...alertsPrev].slice(0, 50));
+        setDangerUsers((dangerPrev) => ({
+          ...dangerPrev,
+          [userId?.toString()]: {
+            since: timestamp || new Date().toISOString(),
+            userName,
+            zoneName,
+            riskLevel,
+          },
+        }));
+        toast.error(
+          `⚠️ ${userName} entered ${riskLevel} risk zone: ${zoneName}`,
+          {
+            duration: 10000,
+          },
+        );
+        return prev;
+      });
+    };
+
+    const handleDangerZoneExit = (data) => {
+      const { userId } = data;
+      setDangerUsers((prev) => {
+        const updated = { ...prev };
+        delete updated[userId?.toString()];
+        return updated;
+      });
+      setLinkedUsers((prev) => {
+        const foundUser = prev.find(
+          (u) => u.id?.toString() === userId?.toString(),
+        );
+        if (foundUser) {
+          toast.success(`✅ ${foundUser.name} exited danger zone`, {
+            duration: 4000,
+          });
+        }
+        return prev;
+      });
+    };
+
     socket.on("link_request_accepted", handleLinkAccepted);
     socket.on("link_request_denied", handleLinkDenied);
     socket.on("location_update", handleLocationUpdate);
     socket.on("emergency_alert", handleEmergencyAlert);
+    socket.on("danger_zone_entry", handleDangerZoneEntry);
+    socket.on("danger_zone_exit", handleDangerZoneExit);
 
     return () => {
       socket.off("link_request_accepted", handleLinkAccepted);
       socket.off("link_request_denied", handleLinkDenied);
       socket.off("location_update", handleLocationUpdate);
       socket.off("emergency_alert", handleEmergencyAlert);
+      socket.off("danger_zone_entry", handleDangerZoneEntry);
+      socket.off("danger_zone_exit", handleDangerZoneExit);
     };
   }, [socket, user, linkedUsers.length]);
 
@@ -309,46 +385,35 @@ const FamilyDashboard = () => {
     toast.success("Marked as safe ✅");
   };
 
+  // ✅ Clear alerts - only UI state, DB alerts remain
   const handleClearAlerts = () => {
     setAlerts([]);
-    localStorage.removeItem(ALERTS_KEY);
-    toast.success("Alerts cleared");
+    toast.success("Alerts cleared from view (history preserved in DB)");
   };
 
-  // ✅ Unlink + clear that user's alerts
   const handleUnlink = async (userId) => {
     try {
       await unlinkUser(userId);
-
-      // ✅ Remove user from list
       setLinkedUsers((prev) =>
         prev.filter((u) => u.id?.toString() !== userId?.toString()),
       );
-
-      // ✅ Remove all alerts from this user
+      // ✅ Remove alerts from view for this user
       setAlerts((prev) =>
         prev.filter((a) => a.userId?.toString() !== userId?.toString()),
       );
-
-      // ✅ Remove from danger state
       setDangerUsers((prev) => {
         const updated = { ...prev };
         delete updated[userId?.toString()];
         return updated;
       });
-
-      // ✅ Stop watching this user's socket room
       if (socket) {
         socket.emit("unwatch_user", userId.toString());
       }
-
-      // ✅ Reset selected if this was selected
       if (selectedUser?.id?.toString() === userId?.toString()) {
         setSelectedUser(null);
         setMapPosition([20.5937, 78.9629]);
       }
-
-      toast.success("User removed and their alerts cleared");
+      toast.success("User removed");
       setUnlinkTarget(null);
     } catch {
       toast.error("Failed to unlink");
@@ -413,7 +478,7 @@ const FamilyDashboard = () => {
         email: linkForm.email.trim(),
         relation: linkForm.relation,
       });
-      toast.success(response.message || "Request sent! Waiting for approval.");
+      toast.success(response.message || "Request sent!");
       setShowLinkModal(false);
       setLinkForm({ email: "", relation: "" });
     } catch (error) {
@@ -449,7 +514,10 @@ const FamilyDashboard = () => {
               {connected ? "Live" : "Offline"}
             </div>
             <button
-              onClick={() => loadLinkedUsers(true)}
+              onClick={() => {
+                loadLinkedUsers(true);
+                loadFamilyAlerts();
+              }}
               className="flex items-center gap-2 px-3 py-2 border-2 border-gray-200 text-gray-600 rounded-xl hover:border-[#E91E8C] hover:text-[#E91E8C] transition-all text-sm"
             >
               <FiRefreshCw className={refreshing ? "animate-spin" : ""} />
@@ -643,8 +711,6 @@ const FamilyDashboard = () => {
                           </span>
                         </div>
                         <p className="text-gray-400 text-xs">{u.relation}</p>
-
-                        {/* ✅ Location time + SOS time separately */}
                         <div className="mt-1 space-y-0.5">
                           {u.location?.lastUpdated ? (
                             <p className="text-gray-400 text-xs">
@@ -822,12 +888,12 @@ const FamilyDashboard = () => {
                 )}
               </div>
 
-              {/* Alert Feed */}
+              {/* Alert Feed - from DB */}
               <div className="bg-white rounded-2xl border border-gray-100 p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-[#1A1A2E] flex items-center gap-2">
                     <FiAlertCircle className="text-red-500 text-lg" />
-                    Live Alert Feed
+                    Alert Feed
                     {alerts.length > 0 && (
                       <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
                         {alerts.length}
@@ -839,19 +905,23 @@ const FamilyDashboard = () => {
                       onClick={handleClearAlerts}
                       className="text-xs text-gray-400 hover:text-red-500 transition-colors"
                     >
-                      Clear All
+                      Clear View
                     </button>
                   )}
                 </div>
 
-                {alerts.length > 0 ? (
+                {alertsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="w-8 h-8 border-4 border-[#E91E8C] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                    <p className="text-gray-400 text-sm">Loading alerts...</p>
+                  </div>
+                ) : alerts.length > 0 ? (
                   <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
                     {alerts.map((alert) => (
                       <div
                         key={alert.id}
                         className="bg-red-50 border border-red-100 rounded-2xl p-4"
                       >
-                        {/* ✅ Top row - icon + name + type + map button */}
                         <div className="flex items-start gap-3">
                           <div className="w-10 h-10 bg-red-500 rounded-xl flex items-center justify-center flex-shrink-0">
                             <MdSecurity className="text-white text-lg" />
@@ -866,15 +936,13 @@ const FamilyDashboard = () => {
                                   {alert.type}
                                 </p>
                               </div>
-                              {/* ✅ Map button top right */}
-                              {alert.mapsLink && (
+                              {/* ✅ Only show map button if location is actually available */}
+                              {alert.locationAvailable && alert.mapsLink && (
                                 <a
                                   href={alert.mapsLink}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5
-              bg-blue-500 text-white text-xs font-semibold rounded-xl
-              hover:bg-blue-600"
+                                  className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-blue-500 text-white text-xs font-semibold rounded-xl hover:bg-blue-600"
                                 >
                                   <MdLocationOn /> Map
                                 </a>
@@ -883,22 +951,20 @@ const FamilyDashboard = () => {
                           </div>
                         </div>
 
-                        {/* ✅ Address - full text, word-break so no overflow */}
-                        {alert.address && (
-                          <div
-                            className="mt-2 flex items-start gap-1.5 bg-white/60 
-      rounded-xl px-3 py-2"
-                          >
-                            <span className="flex-shrink-0 text-xs mt-0.5">
-                              📍
-                            </span>
-                            <p className="text-gray-600 text-xs leading-5 break-words">
-                              {alert.address}
-                            </p>
-                          </div>
-                        )}
+                        {/* Address */}
+                        <div className="mt-2 flex items-start gap-1.5 bg-white/60 rounded-xl px-3 py-2">
+                          <span className="flex-shrink-0 text-xs mt-0.5">
+                            📍
+                          </span>
+                          <p className="text-gray-600 text-xs leading-5 break-words">
+                            {/* ✅ Show honest message if no location */}
+                            {alert.locationAvailable
+                              ? alert.address
+                              : "Location was not available when SOS was triggered"}
+                          </p>
+                        </div>
 
-                        {/* ✅ Time - compact single line */}
+                        {/* Time */}
                         <div className="mt-2 flex items-center gap-1.5 px-1">
                           <span className="text-gray-400 text-xs">🕐</span>
                           <span className="text-gray-400 text-xs">
@@ -924,7 +990,7 @@ const FamilyDashboard = () => {
                       No alerts — everyone is safe! 💚
                     </p>
                     <p className="text-gray-400 text-xs mt-1">
-                      Alerts persist across refreshes
+                      Alerts are stored in database
                     </p>
                   </div>
                 )}
@@ -1038,11 +1104,8 @@ const FamilyDashboard = () => {
               <h3 className="text-xl font-bold text-[#1A1A2E] mb-2">
                 Remove {unlinkTarget.name}?
               </h3>
-              <p className="text-gray-500 text-sm mb-2">
+              <p className="text-gray-500 text-sm mb-6">
                 You will stop monitoring <strong>{unlinkTarget.name}</strong>.
-              </p>
-              <p className="text-red-400 text-xs mb-6">
-                ⚠️ All alerts from {unlinkTarget.name} will also be removed.
               </p>
               <div className="flex gap-3">
                 <button

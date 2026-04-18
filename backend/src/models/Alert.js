@@ -21,28 +21,19 @@ const alertSchema = new mongoose.Schema(
     location: {
       latitude: Number,
       longitude: Number,
-      address: String, // ✅ Place name
-      mapsLink: String, // ✅ Google Maps URL
+      address: String,
+      mapsLink: String,
     },
     contactsNotified: [
       {
         name: String,
         phone: String,
         email: String,
-        smsSent: {
-          type: Boolean,
-          default: false,
-        },
+        smsSent: { type: Boolean, default: false },
         smsError: String,
-        whatsappSent: {
-          type: Boolean,
-          default: false,
-        },
+        whatsappSent: { type: Boolean, default: false },
         whatsappError: String,
-        emailSent: {
-          type: Boolean,
-          default: false,
-        },
+        emailSent: { type: Boolean, default: false },
         emailError: String,
       },
     ],
@@ -51,6 +42,20 @@ const alertSchema = new mongoose.Schema(
       enum: ["Sent", "Failed", "Partial"],
       default: "Sent",
     },
+
+    // ✅ NEW - how many nearby users were notified
+    nearbyUsersNotified: {
+      type: Number,
+      default: 0,
+    },
+
+    // ✅ NEW - helper actions linked to this alert
+    helperActions: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "HelperAction",
+      },
+    ],
   },
   { timestamps: true },
 );
